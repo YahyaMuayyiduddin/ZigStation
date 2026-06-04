@@ -2,10 +2,48 @@ const std = @import("std");
 const Io = std.Io;
 
 const ZigStation = @import("ZigStation");
+// const cpu = @import("core/cpu/cpu.zig");
+
+const SR = packed struct (u32) {
+    IEc: bool,
+    KUc: bool,
+    IEp: bool,
+    KUp: bool,
+    IEo: bool,
+    KUo: bool,
+    pad0 : u2,
+    IM: u8,
+    IsC: bool,
+    SwC: bool,
+    PZ: bool,
+    CM: bool,
+    PE: bool,
+    TS: bool,
+    BEV: bool,
+    pad1 : u2,
+    RE: bool,
+    pad2: u2,
+    CU0: bool,
+    CU1: bool,
+    CU2: bool,
+    CU3: bool
+};
+
 
 pub fn main(init: std.process.Init) !void {
     // Prints to stderr, unbuffered, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    std.debug.print("Size of sr: {}. \n", .{@sizeOf(SR)});
+    // const k: u32 = @bitCast(@as(i16, @bitCast(@as(u16,0xFFFF))));
+
+
+
+    const k: i8 = @bitCast(@as(u8, 0xFF));
+    const shift: u2 = 3;
+    const j: i8 = k >> (3 - shift + 1);
+    const m: u8 = @bitCast(j);
+    std.debug.print("{}\n",.{m});
+    // const i: u8 = 0xFF << 2;
 
     // This is appropriate for anything that lives as long as the process.
     const arena: std.mem.Allocator = init.arena.allocator();
