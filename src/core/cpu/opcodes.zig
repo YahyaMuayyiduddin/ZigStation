@@ -36,12 +36,11 @@ pub fn Add(self: *CPU, opcode: u32) void {
     const rt = self.read_register(instruction.rt);
     const carry_from_30: u32 = (rs & 0x7FFFFFFF ) +% (rt & 0x7FFFFFFF);
     const carry_from_31: u33 = @as(u33,rs) +% @as(u33, rt);
-    if ((carry_from_30 >> 31) & 0x1 != (carry_from_31 >> 32) & 0x1){
+    if ((carry_from_30 >> 31) & 0x1 != @as(u32, carry_from_31 >> 32) & 0x1){
         self.HandleException(Exceptions.Ov);
     } else {
         self.write_register(instruction.rd, rs +% rt);
     }
-
 }
 
 pub fn AddI(self: *CPU, opcode: u32) void {
@@ -211,18 +210,35 @@ pub fn DIV(self: *CPU, opcode: u32) void {
     const instruction: I_Type = @bitCast(opcode);
     const dividend = self.ReadRegister(instruction.rs);
     const divisor = self.ReadRegister(instruction.rt);
+    const signed_dividend: i32 = @bitCast(dividend);
+    const signed_divisor: i32 = @bitCast(divisor);
+
 
     if (divisor == 0) {
         self.Hi = @bitCast(dividend);
-        self.Lo = @bitCast(if (dividend >= 0) @as(i32, -1) else @as(i32, 1));
+        self.Lo = @bitCast(if (signed_dividend >= 0) @as(i32, -1) else @as(i32, 1));
         return;
     }
-    if (dividend == -2147483648 and divisor == -1) {
+    if ((signed_dividend == -2147483648) and (signed_divisor == -1)) {
         self.Lo = @bitCast(@as(i32, -2147483648));
         self.Hi = 0;
         return;
     }
-    const quotient = @divFloor(dividend, divisor);
+    const quotient = @divTrunc(signed_dividend, signed_divisor);
+    const remainder = @rem(signed_dividend, signed_divisor);
+    self.Lo = @bitCast(quotient);
+    self.Hi = @bitCast(remainder);
+}
+
+pub fn DIVU(self: *CPU, opcode: u32) void {
+    const instruction: I_Type = @bitCast(opcode);
+    const dividend = self.ReadRegister(instruction.rs);
+    const divisor = self.ReadRegister(instruction.rt);
+
+    if (divisor == 0) {
+        return;
+    }
+    const quotient = dividend / divisor;
     const remainder = dividend % divisor;
     self.Lo = quotient;
     self.Hi = remainder;
@@ -346,6 +362,8 @@ pub fn LWCz(self: *CPU, opcode: u32) void {
     self.LoadDelayCopGenReg(coprocessor, instruction.rt, content);
 }
 
+
+
 pub fn LWL(self: *CPU, opcode: u32) void {
     const instruction: I_Type = @bitCast(opcode);
     const sign_extended_offset: u32 = utils.SignExtend16To32(instruction.immediate);
@@ -354,15 +372,13 @@ pub fn LWL(self: *CPU, opcode: u32) void {
     const true_address = address & 0xFFFFFFFC;
     const start_byte_index = address & 0x3;
     const content = self.BusRead32(true_address);
-    var current_rt_value: u32 = self.ReadRegister(instruction.rt);
+    const current_rt_value: u32 = self.ReadRegister(instruction.rt);
     const rt_mask: u32 = if (start_byte_index != 0) 0xFFFFFFFF >> (((3 - start_byte_index) + 1) * 8) else 0;
-    current_rt_value &= rt_mask;
-    const j_start: usize = 0;
-    for (start_byte_index .. 4, j_start..) |i, j|{
-        const byte: u32 = ((content >> (8 * i)) & 0xFF) << (24 - 8 * j);
-        current_rt_value |= byte;
-    }
-    self.LoadDelayRegister(instruction.rt, current_rt_value);
+    const masked_content: u32 = content << 8 * (3 - start_byte_index);
+    const final_val: u32 = masked_content | (current_rt_value & rt_mask);
+
+    self.LoadDelayRegister(instruction.rt, final_val);
+
 }
 
 pub fn LWR(self: *CPU, opcode: u32) void {
@@ -373,15 +389,12 @@ pub fn LWR(self: *CPU, opcode: u32) void {
     const true_address = address & 0xFFFFFFFC;
     const start_byte_index = address & 0x3;
     const content = self.BusRead32(true_address);
-    var current_rt_value: u32 = self.ReadRegister(instruction.rt);
-    const rt_mask: u32 = if (start_byte_index != 3) 0xFFFFFFFF << ((start_byte_index + 1) * 8) else 0;
-    current_rt_value &= rt_mask;
+    const current_rt_value: u32 = self.ReadRegister(instruction.rt);
+    const rt_mask: u32 = if (start_byte_index != 0) 0xFFFFFFFF << (((3 - start_byte_index) + 1) * 8) else 0;
+    const masked_content: u32 = content >> 8 * start_byte_index;
+    const final_val: u32 = masked_content | (current_rt_value & rt_mask);
 
-    for (0 .. start_byte_index + 1) |i|{
-        const byte: u32 = ((content >> (8 * i)) & 0xFF) << 8 * i;
-        current_rt_value |= byte;
-    }
-    self.LoadDelayRegister(instruction.rt, current_rt_value);
+    self.LoadDelayRegister(instruction.rt, final_val);
 
 }
 
@@ -578,10 +591,32 @@ pub fn SRLV(self: *CPU, opcode: u32) void {
 }
 
 pub fn SUB(self: *CPU, opcode: u32) void {
-
+    const instruction: R_Type = @bitCast(opcode);
+    const rt_value: i64 = @intCast(@as(i32, @bitCast(self.ReadRegister(instruction.rt))));
+    const rs_value: i64 = @intCast(@as(i32, @bitCast(self.ReadRegister(instruction.rs))));
+    const initial_res = rs_value - rt_value;
+    if (initial_res < -2147483648 or initial_res > 2147483647){
+        self.HandleException(.Ov);
+        return;
+    }
+    const final_u32: u32 = @bitCast(@as(i32, @truncate(initial_res)));
+    self.WriteRegister(instruction.rd, final_u32);
 }
 
 pub fn SUBU(self: *CPU, opcode: u32) void {
+    const instruction: R_Type = @bitCast(opcode);
+    self.WriteRegister(instruction.rd, self.ReadRegister(instruction.rs) -% self.ReadRegister(instruction.rt));
+
+}
+
+pub fn SW(self: *CPU, opcode: u32) void {
+    const instruction: I_Type = @bitCast(opcode);
+    const address = self.ReadRegister(instruction.rs) +% utils.SignExtend16To32(instruction.immediate);
+    if (address & 3 != 0) {
+        self.HandleException(.AdES, address);
+        return;
+    }
+    self.BusWrite32(address, self.ReadRegister(instruction.rt));
 
 }
 
@@ -607,12 +642,23 @@ pub fn SWL(self: *CPU, opcode: u32) void {
     const address = (self.ReadRegister(instruction.rs) +% utils.SignExtend16To32(instruction.immediate));
     const virtual_address: u32 = address & 0xFFFFFFFC;
     const start_index: u2 = address & 0x3;
-    const shift: u5 = start_index * 8;
-    const mask: u32 = if (start_index != 0) 0xFFFFFFFF <<  ((3 - start_index + 1) * 8) else 0;
-    const current_mem_val = self.BusRead32(virtual_address);
-    const rt_val = self.ReadRegister(instruction.rt) >> shift;
+    const mask: u32 = if (start_index != 3) 0xFFFFFFFF <<  ((start_index + 1) * 8) else 0;
+    const current_mem_val = self.BusRead32(virtual_address) & mask;
+    const content = self.ReadRegister(instruction.rt) >> (8 * (3 - start_index));
 
-    self.BusWrite32(virtual_address, (current_mem_val & mask) | rt_val);
+    self.BusWrite32(virtual_address,current_mem_val | content);
+}
+
+pub fn SWR(self: *CPU, opcode: u32) void {
+    const instruction: I_Type = @bitCast(opcode);
+    const address = (self.ReadRegister(instruction.rs) +% utils.SignExtend16To32(instruction.immediate));
+    const virtual_address: u32 = address & 0xFFFFFFFC;
+    const start_index: u2 = address & 0x3;
+    const mask: u32 = if (start_index != 0) 0xFFFFFFFF >> (((3 - start_index ) + 1) * 8) else 0;
+    const current_mem_val = self.BusRead32(virtual_address) & mask;
+    const content = self.ReadRegister(instruction.rt) << (8 * start_index);
+
+    self.BusWrite32(virtual_address,current_mem_val | content);
 }
 
 pub fn SYSCALL(self: *CPU, opcode: u32) void {
@@ -632,3 +678,127 @@ pub fn XORI(self: *CPU, opcode: u32) void {
     const value: u32 = zero_imm ^ self.ReadRegister(instruction.rs);
     self.WriteRegister(instruction.rt, value);
 }
+
+pub fn InvalidOpcode(self: *CPU, opcode: u32) void {
+    _ = self;
+    _ = opcode;
+}
+
+pub fn RFE(self: *CPU, opcode: u32) void {
+    const current_sr: u32 = @bitCast(self.SR_Reg);
+    const status_shifted: u4 = @truncate(current_sr >> 2);
+    const res: u32 = current_sr & 0xFFFFFFF0 | status_shifted;
+    self.SR_Reg = @bitCast(res);
+}
+
+pub const op0_table: [44](*const fn(*CPU, u32) void) = [44](*const fn(*CPU, u32) void ){
+    &SLL, &InvalidOpcode,&SRL, &SRA, &SLLV, &InvalidOpcode, &SRLV, &SRAV, &JR, &JALR, &InvalidOpcode, &InvalidOpcode,
+    &SYSCALL, &Break, &InvalidOpcode, &InvalidOpcode, &MFHI, &MTHI, &MFLO, &MTLO, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode,
+    &InvalidOpcode, &MULT, &MULTU, &DIV, &DIVU, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &Add, &AddU, &SUB,
+    &SUBU, &And, &OR, &XOR, &NOR, &InvalidOpcode, &InvalidOpcode, &SLT, &SLTU
+};
+
+const op1_table: [17](*const fn(*CPU, u32) void) = [17](*const fn(*CPU, u32) void ){
+    &BLTZ, &BGEZ, &InvalidOpcode,  &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode,
+    &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &InvalidOpcode, &BLTZAL, &BGEZAL
+};
+
+const op24_table: [9](*const fn(*CPU, u32) void) = [9](*const fn(*CPU, u32) void ){
+
+};
+
+pub fn InitOpc0Table(self: *CPU, opcode_0_table: [17](*const fn(*CPU, u32) void) ) void {
+    _ = self;
+    opcode_0_table[0x00] = &SLL;
+    opcode_0_table[0x02] = &SRL;
+    opcode_0_table[0x03] = &SRA;
+    opcode_0_table[0x04] = &SLLV;
+    opcode_0_table[0x06] = &SRLV;
+    opcode_0_table[0x07] = &SRAV;
+    opcode_0_table[0x08] = &JR;
+    opcode_0_table[0x09] = &JALR;
+    opcode_0_table[0x0C] = &SYSCALL;
+    opcode_0_table[0x0D] = &Break;
+    opcode_0_table[0x10] = &MFHI;
+    opcode_0_table[0x11] = &MTHI;
+    opcode_0_table[0x12] = &MFLO;
+    opcode_0_table[0x13] = &MTLO;
+    opcode_0_table[0x18] = &MULT;
+    opcode_0_table[0x19] = &MULTU;
+    opcode_0_table[0x1A] = &DIV;
+    opcode_0_table[0x1B] = &DIVU;
+    opcode_0_table[0x20] = &Add;
+    opcode_0_table[0x21] = &AddU;
+    opcode_0_table[0x22] = &SUB;
+    opcode_0_table[0x23] = &SUBU;
+    opcode_0_table[0x24] = &And;
+    opcode_0_table[0x25] = &OR;
+    opcode_0_table[0x26] = &XOR;
+    opcode_0_table[0x27] = &NOR;
+    opcode_0_table[0x2A] = &SLT;
+    opcode_0_table[0x2B] = &SLTU;
+
+
+}
+
+pub fn InitOpcodeTable(self: *CPU) void {
+    _ = self;
+    const opcode_table: [57](*const fn(*CPU, u32) void) = [57](*const fn(*CPU, u32) void ){};
+    opcode_table[0x00] = &DecodeOpcodeZero;
+    opcode_table[0x01] = &DecodeOpcodeBranch;
+    opcode_table[0x02] = &J;
+    opcode_table[0x03] = &JAL;
+    opcode_table[0x04] = &BEQ;
+    opcode_table[0x05] = &BNE;
+    opcode_table[0x06] = &BLEZ;
+    opcode_table[0x07] = &BGTZ;
+    opcode_table[0x08] = &AddI;
+    opcode_table[0x09] = &AddIU;
+    opcode_table[0x0C] = &AndI;
+    opcode_table[0x0D] = &ORI;
+    opcode_table[0x0E] = &XORI;
+    opcode_table[0x0F] = &LUI;
+    opcode_table[0x0A] = &SLTI;
+    opcode_table[0x0B] = &SLTIU;
+    opcode_table[0x10] = &DecodeOpcodeCop;
+    opcode_table[0x12] = &DecodeOpcodeCop;
+    opcode_table[0x20] = &LB;
+    opcode_table[0x21] = &LH;
+    opcode_table[0x22] = &LWL;
+    opcode_table[0x23] = &LW;
+    opcode_table[0x24] = &LBU;
+    opcode_table[0x25] = &LHU;
+    opcode_table[0x26] = &LWR;
+    opcode_table[0x28] = &SB;
+    opcode_table[0x29] = &SH;
+    opcode_table[0x2A] = &SWL;
+    opcode_table[0x2B] = &SW;
+    opcode_table[0x2E] = &SWR;
+    opcode_table[0x32] = &LWCz;
+    opcode_table[0x3A] = &SWZc;
+
+
+}
+pub fn DecodeOpcodeZero(self: *CPU, opcode: u32) void{
+    const funct: u6 = @truncate(opcode);
+    op0_table[funct](self, opcode);
+}
+
+pub fn DecodeOpcodeBranch(self: *CPU, opcode: u32) void {
+    const index: u5 = @truncate(opcode >> 16);
+    op1_table[index](self, opcode);
+}
+pub fn DecodeOpcodeCop(self: *CPU, opcode: u32) void {
+    const index: u5 = @truncate(opcode >> 16);
+    op1_table[index](self, opcode);
+}
+
+pub fn DecodeOpcode(self: *CPU, opcode: u32) void {
+    const index: u6 = @truncate(opcode >> 26);
+    opcode_table[index](self, opcode);
+
+}
+
+// Decoding
+//
+

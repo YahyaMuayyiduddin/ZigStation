@@ -2,6 +2,8 @@
 
 const types = @import("../utils/types.zig");
 const Exceptions = types.Exceptions;
+const opcodes = @import("opcodes.zig");
+
 
 const PRId = packed struct (u32) {
     Rev: u8,
@@ -153,6 +155,7 @@ const LSI3000A = struct {
 
     pub fn ReadCP0(self: *LSI3000A, register: u5) u32 {
         // TODO Complete
+        _ = register;
         return self.cp0_register[u5];
     }
 
@@ -160,33 +163,60 @@ const LSI3000A = struct {
         // TODO Complete
         self.cp0_register[register] = value;
     }
+    pub fn WriteCoprocessorControlReg(self: *LSI3000A, coprocessor: u2, register: u5, value: u32) void {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        _ = value;
+        // TODO: Complete
+}
 
-    pub fn WriteCoprocessorControlReg(self: *LSI3000A, coprocessor: u3 ,register: u5, value: u32) void {
-        // TODO Complete
-    }
-    pub fn ReadCoprocessorControlReg(self: *LSI3000A, coprocessor: u2 ,register: u5) u32 {
-        // TODO Complete
+    pub fn ReadCoprocessorControlReg(self: *LSI3000A, coprocessor: u2, register: u5) u32 {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        // TODO: Complete
+    return 0;
     }
 
     pub fn CoprocessorOperation(self: *LSI3000A, coprocessor: u2, co_fun: u25) void {
-        // TODO Complete
+        _ = self;
+        _ = coprocessor;
+        _ = co_fun;
+        // TODO: Complete
+}
+
+    pub fn WriteCoprocessorGenReg(self: *LSI3000A, coprocessor: u2, register: u5, value: u32) void {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        _ = value;
+        // TODO: Complete
+}
+
+    pub fn ReadCoprocessorGenReg(self: *LSI3000A, coprocessor: u2, register: u5) u32 {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        // TODO: Complete
+    return 0;
     }
 
-    pub fn WriteCoprocessorGenReg(self: *LSI3000A, coprocessor: u3 ,register: u5, value: u32) void {
-        // TODO Complete
-    }
-    pub fn ReadCoprocessorGenReg(self: *LSI3000A, coprocessor: u2 ,register: u5) u32 {
-        // TODO Complete
-    }
+    pub fn LoadDelayCopGenReg(self: *LSI3000A, coprocessor: u2, register: u5, value: u32) void {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        _ = value;
+        // TODO: Complete
+}
 
-    pub fn LoadDelayCopGenReg(self: *LSI3000A, coprocessor: u3 ,register: u5, value: u32) void {
-
-    }
-
-    pub fn LoadDelayCopConReg(self: *LSI3000A, coprocessor: u3 ,register: u5, value: u32) void {
-
-    }
-
+    pub fn LoadDelayCopConReg(self: *LSI3000A, coprocessor: u2, register: u5, value: u32) void {
+        _ = self;
+        _ = coprocessor;
+        _ = register;
+        _ = value;
+        // TODO: Complete
+}
     pub fn HandleException(self: *LSI3000A, exception_type: Exceptions, bad_address: ?u32) void {
         self.Cause_Reg.ExcCode = @as(u5, @intFromEnum(exception_type));
         self.EPC_Reg = if (self.branch_called) self.PC - 8 else self.PC - 4;
